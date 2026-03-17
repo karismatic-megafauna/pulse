@@ -9,8 +9,8 @@ use ratatui::{
     Frame, Terminal,
 };
 use rusqlite::Connection;
+use std::sync::mpsc;
 use std::time;
-use tokio::sync::mpsc;
 
 use crate::config::Config;
 use crate::integrations::weather;
@@ -49,8 +49,8 @@ pub struct App {
     dashboard_tab: DashboardTab,
     conn: Connection,
     config: Config,
-    bg_tx: mpsc::UnboundedSender<BackgroundMsg>,
-    bg_rx: mpsc::UnboundedReceiver<BackgroundMsg>,
+    bg_tx: mpsc::SyncSender<BackgroundMsg>,
+    bg_rx: mpsc::Receiver<BackgroundMsg>,
 }
 
 impl App {
@@ -60,7 +60,7 @@ impl App {
         let goals_tab = GoalsTab::new(&conn, today);
         let logs_tab = LogsTab::new(&conn, today);
         let dashboard_tab = DashboardTab::new();
-        let (bg_tx, bg_rx) = mpsc::unbounded_channel();
+        let (bg_tx, bg_rx) = mpsc::sync_channel(8);
         Self {
             should_quit: false,
             current_tab: Tab::Tasks,
@@ -117,8 +117,11 @@ impl App {
         let tx = self.bg_tx.clone();
         let location = self.config.weather.location.clone();
         let units = self.config.weather.units.clone();
-        tokio::spawn(async move {
-            let result = weather::fetch(&location, &units).await;
+        // Use a real OS thread so it's fully independent of the TUI event loop.
+        // block_on drives the async fetch from this dedicated thread.
+        let handle = tokio::runtime::Handle::current();
+        std::thread::spawn(move || {
+            let result = handle.block_on(weather::fetch(&location, &units));
             let _ = tx.send(BackgroundMsg::WeatherResult(result));
         });
     }
