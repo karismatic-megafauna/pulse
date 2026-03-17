@@ -43,6 +43,10 @@ impl TasksTab {
         }
     }
 
+    pub fn is_capturing_input(&self) -> bool {
+        self.mode != Mode::Normal
+    }
+
     pub fn reload(&mut self, conn: &Connection) {
         self.tasks = task::list_for_date(conn, self.date).unwrap_or_default();
         // Keep selection in bounds

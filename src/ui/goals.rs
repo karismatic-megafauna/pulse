@@ -43,6 +43,10 @@ impl GoalsTab {
         }
     }
 
+    pub fn is_capturing_input(&self) -> bool {
+        self.mode != Mode::Normal
+    }
+
     pub fn reload(&mut self, conn: &Connection) {
         self.goals = goal::list_for_week(conn, self.week).unwrap_or_default();
         if let Some(sel) = self.list_state.selected() {

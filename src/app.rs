@@ -85,24 +85,33 @@ impl App {
             return;
         }
 
-        // Global: Tab / Shift+Tab cycles top-level tabs
-        if key.code == KeyCode::Tab {
-            self.cycle_tab(1);
-            return;
-        }
-        if key.code == KeyCode::BackTab {
-            self.cycle_tab(-1);
-            return;
-        }
+        // Skip global shortcuts when a tab has an active input field
+        let capturing = match self.current_tab {
+            Tab::Tasks => self.tasks_tab.is_capturing_input(),
+            Tab::Goals => self.goals_tab.is_capturing_input(),
+            Tab::Logs => self.logs_tab.is_capturing_input(),
+        };
 
-        // Global: < / > navigate days (tasks + logs) or weeks (goals)
-        if key.code == KeyCode::Char('<') || key.code == KeyCode::Char(',') {
-            self.navigate_date(-1);
-            return;
-        }
-        if key.code == KeyCode::Char('>') || key.code == KeyCode::Char('.') {
-            self.navigate_date(1);
-            return;
+        if !capturing {
+            // Global: Tab / Shift+Tab cycles top-level tabs
+            if key.code == KeyCode::Tab {
+                self.cycle_tab(1);
+                return;
+            }
+            if key.code == KeyCode::BackTab {
+                self.cycle_tab(-1);
+                return;
+            }
+
+            // Global: , / . navigate days (tasks + logs) or weeks (goals)
+            if key.code == KeyCode::Char(',') {
+                self.navigate_date(-1);
+                return;
+            }
+            if key.code == KeyCode::Char('.') {
+                self.navigate_date(1);
+                return;
+            }
         }
 
         // Delegate to active tab

@@ -83,6 +83,10 @@ impl LogsTab {
         }
     }
 
+    pub fn is_capturing_input(&self) -> bool {
+        self.mode != Mode::Normal
+    }
+
     pub fn reload(&mut self, conn: &Connection) {
         self.workouts = workout::list_for_date(conn, self.date).unwrap_or_default();
         self.weight_entry = weight::get_for_date(conn, self.date).unwrap_or(None);
