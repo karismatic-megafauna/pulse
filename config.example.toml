@@ -8,25 +8,25 @@ weight_unit = "lbs"
 [weather]
 enabled = true
 location = "Beverly_Hills"  # city name, zip code, or lat,lon
-units = "imperial"           # "imperial" (°F, mph) or "metric" (°C, km/h)
+units = "imperial"           # "imperial" (F, mph) or "metric" (C, km/h)
 
-# Phase 4: Jira
-# [jira]
-# base_url = "https://yourcompany.atlassian.net"
-# email = "you@company.com"
-# api_token = "..."
+[jira]
+enabled = false
+base_url = "https://yourcompany.atlassian.net"
+email = "you@company.com"
+api_token = "your-api-token"
 
-# Phase 4: GitLab
-# [gitlab]
-# base_url = "https://gitlab.com"
-# private_token = "..."
+[gitlab]
+enabled = false
+base_url = "https://gitlab.com"
+private_token = "your-private-token"
 
-# Phase 4: Slack
-# [slack]
-# bot_token = "xoxb-..."
-# important_users = ["U12345678", "U87654321"]
+[slack]
+enabled = false
+bot_token = "xoxb-your-bot-token"
+important_users = ["U12345678", "U87654321"]  # Slack user IDs
 
-# Phase 4: Calendar (uses icalBuddy on macOS)
-# [calendar]
-# enabled = true
-# num_events = 5
+[calendar]
+enabled = false
+num_events = 5  # number of upcoming events to show
+# Requires icalBuddy on macOS: brew install ical-buddy
