@@ -1,0 +1,32 @@
+# pulse - personal productivity terminal app
+# Copy this to ~/.config/pulse/config.toml and customize
+
+[general]
+# "lbs" or "kg"
+weight_unit = "lbs"
+
+# Phase 3: weather
+# [weather]
+# location = "Beverly_Hills"
+# units = "imperial"  # "imperial" or "metric"
+
+# Phase 4: Jira
+# [jira]
+# base_url = "https://yourcompany.atlassian.net"
+# email = "you@company.com"
+# api_token = "..."
+
+# Phase 4: GitLab
+# [gitlab]
+# base_url = "https://gitlab.com"
+# private_token = "..."
+
+# Phase 4: Slack
+# [slack]
+# bot_token = "xoxb-..."
+# important_users = ["U12345678", "U87654321"]
+
+# Phase 4: Calendar (uses icalBuddy on macOS)
+# [calendar]
+# enabled = true
+# num_events = 5
