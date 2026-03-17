@@ -10,43 +10,57 @@ use ratatui::{
 };
 use rusqlite::Connection;
 use std::time;
+use tokio::sync::mpsc;
 
+use crate::config::Config;
+use crate::integrations::weather;
+use crate::ui::dashboard::{DashboardAction, DashboardTab};
 use crate::ui::goals::{GoalAction, GoalsTab};
 use crate::ui::logs::{LogAction, LogsTab};
 use crate::ui::tasks::{TaskAction, TasksTab};
+
+#[derive(Debug)]
+enum BackgroundMsg {
+    WeatherResult(Result<weather::WeatherData, String>),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
     Tasks,
     Goals,
     Logs,
-    // Phase 3: Dashboard,
+    Dashboard,
 }
 
 const TABS: &[(&str, Tab)] = &[
     ("Tasks", Tab::Tasks),
     ("Goals", Tab::Goals),
     ("Logs", Tab::Logs),
-    // ("Dashboard", Tab::Dashboard),
+    ("Dashboard", Tab::Dashboard),
 ];
 
 pub struct App {
     pub should_quit: bool,
     current_tab: Tab,
-    /// Shared "viewing date" — navigate with < / >
     view_date: NaiveDate,
     tasks_tab: TasksTab,
     goals_tab: GoalsTab,
     logs_tab: LogsTab,
+    dashboard_tab: DashboardTab,
     conn: Connection,
+    config: Config,
+    bg_tx: mpsc::UnboundedSender<BackgroundMsg>,
+    bg_rx: mpsc::UnboundedReceiver<BackgroundMsg>,
 }
 
 impl App {
-    pub fn new(conn: Connection) -> Self {
+    pub fn new(conn: Connection, config: Config) -> Self {
         let today = Local::now().date_naive();
         let tasks_tab = TasksTab::new(&conn, today);
         let goals_tab = GoalsTab::new(&conn, today);
         let logs_tab = LogsTab::new(&conn, today);
+        let dashboard_tab = DashboardTab::new();
+        let (bg_tx, bg_rx) = mpsc::unbounded_channel();
         Self {
             should_quit: false,
             current_tab: Tab::Tasks,
@@ -54,7 +68,11 @@ impl App {
             tasks_tab,
             goals_tab,
             logs_tab,
+            dashboard_tab,
             conn,
+            config,
+            bg_tx,
+            bg_rx,
         }
     }
 
@@ -63,7 +81,23 @@ impl App {
         terminal: &mut Terminal<B>,
     ) -> Result<()> {
         loop {
+            // Kick off weather fetch if needed
+            if self.dashboard_tab.weather_cache.needs_refresh()
+                && self.config.weather.enabled
+            {
+                self.spawn_weather_fetch();
+            }
+
             terminal.draw(|f| self.render(f))?;
+
+            // Drain background results (non-blocking)
+            while let Ok(msg) = self.bg_rx.try_recv() {
+                match msg {
+                    BackgroundMsg::WeatherResult(res) => {
+                        self.dashboard_tab.weather_cache.set_result(res);
+                    }
+                }
+            }
 
             if event::poll(time::Duration::from_millis(200))? {
                 if let Event::Key(key) = event::read()? {
@@ -78,22 +112,31 @@ impl App {
         Ok(())
     }
 
+    fn spawn_weather_fetch(&mut self) {
+        self.dashboard_tab.weather_cache.set_loading();
+        let tx = self.bg_tx.clone();
+        let location = self.config.weather.location.clone();
+        let units = self.config.weather.units.clone();
+        tokio::spawn(async move {
+            let result = weather::fetch(&location, &units).await;
+            let _ = tx.send(BackgroundMsg::WeatherResult(result));
+        });
+    }
+
     fn handle_key(&mut self, key: KeyEvent) {
-        // Global: Ctrl+C always quits
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             self.should_quit = true;
             return;
         }
 
-        // Skip global shortcuts when a tab has an active input field
         let capturing = match self.current_tab {
             Tab::Tasks => self.tasks_tab.is_capturing_input(),
             Tab::Goals => self.goals_tab.is_capturing_input(),
             Tab::Logs => self.logs_tab.is_capturing_input(),
+            Tab::Dashboard => self.dashboard_tab.is_capturing_input(),
         };
 
         if !capturing {
-            // Global: Tab / Shift+Tab cycles top-level tabs
             if key.code == KeyCode::Tab {
                 self.cycle_tab(1);
                 return;
@@ -102,8 +145,6 @@ impl App {
                 self.cycle_tab(-1);
                 return;
             }
-
-            // Global: , / . navigate days (tasks + logs) or weeks (goals)
             if key.code == KeyCode::Char(',') {
                 self.navigate_date(-1);
                 return;
@@ -114,7 +155,6 @@ impl App {
             }
         }
 
-        // Delegate to active tab
         match self.current_tab {
             Tab::Tasks => {
                 if let TaskAction::Quit = self.tasks_tab.handle_key(key, &self.conn) {
@@ -131,6 +171,15 @@ impl App {
                     self.should_quit = true;
                 }
             }
+            Tab::Dashboard => match self.dashboard_tab.handle_key(key) {
+                DashboardAction::RefreshWeather => {
+                    if self.config.weather.enabled {
+                        self.spawn_weather_fetch();
+                    }
+                }
+                DashboardAction::Quit => self.should_quit = true,
+                DashboardAction::None => {}
+            },
         }
     }
 
@@ -153,11 +202,11 @@ impl App {
                 self.logs_tab.reload(&self.conn);
             }
             Tab::Goals => {
-                // Navigate by week
                 self.view_date = self.view_date + Duration::weeks(delta as i64);
                 self.goals_tab.week = self.view_date;
                 self.goals_tab.reload(&self.conn);
             }
+            Tab::Dashboard => {} // Dashboard always shows today
         }
     }
 
@@ -198,12 +247,10 @@ impl App {
                         format!(" pulse [{}] ", date_label),
                         Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
                     ))
-                    .title_bottom(
-                        Span::styled(
-                            " [Tab] switch  [,/.] prev/next day  [Ctrl+C/q] quit ",
-                            Style::default().fg(Color::DarkGray),
-                        ),
-                    ),
+                    .title_bottom(Span::styled(
+                        " [Tab] switch  [,/.] prev/next  [Ctrl+C/q] quit ",
+                        Style::default().fg(Color::DarkGray),
+                    )),
             )
             .select(selected)
             .highlight_style(
@@ -221,6 +268,7 @@ impl App {
             Tab::Tasks => self.tasks_tab.render(frame, area),
             Tab::Goals => self.goals_tab.render(frame, area),
             Tab::Logs => self.logs_tab.render(frame, area),
+            Tab::Dashboard => self.dashboard_tab.render(frame, area, &self.conn),
         }
     }
 }

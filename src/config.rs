@@ -7,6 +7,25 @@ use std::path::PathBuf;
 pub struct Config {
     #[serde(default)]
     pub general: GeneralConfig,
+    #[serde(default)]
+    pub weather: WeatherConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WeatherConfig {
+    pub enabled: bool,
+    pub location: String,
+    pub units: String, // "imperial" or "metric"
+}
+
+impl Default for WeatherConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            location: String::new(),
+            units: "imperial".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,6 +45,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             general: GeneralConfig::default(),
+            weather: WeatherConfig::default(),
         }
     }
 }

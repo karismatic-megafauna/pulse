@@ -18,3 +18,4 @@ toml = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
 color-eyre = "0.6"
+urlencoding = "2"

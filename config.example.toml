@@ -5,10 +5,10 @@
 # "lbs" or "kg"
 weight_unit = "lbs"
 
-# Phase 3: weather
-# [weather]
-# location = "Beverly_Hills"
-# units = "imperial"  # "imperial" or "metric"
+[weather]
+enabled = true
+location = "Beverly_Hills"  # city name, zip code, or lat,lon
+units = "imperial"           # "imperial" (°F, mph) or "metric" (°C, km/h)
 
 # Phase 4: Jira
 # [jira]
