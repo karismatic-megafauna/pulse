@@ -154,11 +154,23 @@ fn parse_icalbuddy_output(raw: &str) -> Vec<CalendarEvent> {
         });
     }
 
-    // Deduplicate events with the same title + time (e.g. holiday on multiple calendars)
+    // Deduplicate events with the same title + time (e.g. holiday on multiple calendars).
+    // Normalize unicode quotes/dashes to ASCII before comparing, since different calendar
+    // sources use different quote characters for the same event.
     let mut seen = std::collections::HashSet::new();
-    events.retain(|ev| seen.insert((ev.title.clone(), ev.time.clone())));
+    events.retain(|ev| seen.insert((normalize(&ev.title), ev.time.clone())));
 
     events
+}
+
+/// Normalize unicode punctuation to ASCII for dedup comparison.
+fn normalize(s: &str) -> String {
+    s.replace('\u{2019}', "'")  // right single quote
+     .replace('\u{2018}', "'")  // left single quote
+     .replace('\u{201C}', "\"") // left double quote
+     .replace('\u{201D}', "\"") // right double quote
+     .replace('\u{2013}', "-")  // en dash
+     .replace('\u{2014}', "-")  // em dash
 }
 
 #[cfg(test)]
@@ -183,6 +195,17 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].title, "St. Patrick's Day");
         assert_eq!(events[0].time, "Tue 17 all day");
+    }
+
+    #[test]
+    fn test_dedup_all_day_no_datetime_line() {
+        // icalBuddy outputs all-day events with NO datetime line when
+        // they come from multiple calendars
+        let raw = "• St. Patrick's Day\n• St. Patrick's Day\n• Daily Standup\n    Wed 18 at 09:30\n";
+        let events = parse_icalbuddy_output(raw);
+        assert_eq!(events.len(), 2, "duplicate should be removed: {:?}", events);
+        assert_eq!(events[0].title, "St. Patrick's Day");
+        assert_eq!(events[1].title, "Daily Standup");
     }
 
     #[test]
