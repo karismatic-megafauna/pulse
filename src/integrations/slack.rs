@@ -76,18 +76,30 @@ pub async fn fetch(
     // Build a map of user_id -> DM channel_id using conversations.list
     let dm_map = list_dm_channels(&client, bot_token).await?;
 
+    // Resolve user IDs to display names
+    let mut name_map = std::collections::HashMap::new();
+    for user_id in important_users {
+        if let Ok(name) = resolve_user_name(&client, bot_token, user_id).await {
+            name_map.insert(user_id.clone(), name);
+        }
+    }
+
     let mut messages = Vec::new();
 
     for user_id in important_users {
+        let display_name = name_map
+            .get(user_id)
+            .cloned()
+            .unwrap_or_else(|| user_id.clone());
         let channel_id = dm_map.get(user_id.as_str());
         match channel_id {
             Some(ch) => {
-                match fetch_latest_message(&client, bot_token, ch, user_id).await {
+                match fetch_latest_message(&client, bot_token, ch, &display_name).await {
                     Ok(Some(msg)) => messages.push(msg),
                     Ok(None) => {}
                     Err(e) => {
                         messages.push(SlackMessage {
-                            from_user: user_id.clone(),
+                            from_user: display_name.clone(),
                             text: format!("[error: {}]", e),
                             channel_id: String::new(),
                             timestamp: String::new(),
@@ -97,7 +109,7 @@ pub async fn fetch(
             }
             None => {
                 messages.push(SlackMessage {
-                    from_user: user_id.clone(),
+                    from_user: display_name.clone(),
                     text: "[no DM channel found — bot may not have access]".to_string(),
                     channel_id: String::new(),
                     timestamp: String::new(),
@@ -162,6 +174,42 @@ async fn list_dm_channels(
     }
 
     Ok(map)
+}
+
+async fn resolve_user_name(
+    client: &Client,
+    bot_token: &str,
+    user_id: &str,
+) -> Result<String, String> {
+    let url = format!("https://slack.com/api/users.info?user={}", user_id);
+    let resp = client
+        .get(&url)
+        .bearer_auth(bot_token)
+        .send()
+        .await
+        .map_err(|e| format!("Slack users.info: {}", e))?;
+
+    let json: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Slack parse: {}", e))?;
+
+    if !json["ok"].as_bool().unwrap_or(false) {
+        return Err(json["error"].as_str().unwrap_or("unknown").to_string());
+    }
+
+    // Prefer display_name, fall back to real_name, then name
+    let profile = &json["user"]["profile"];
+    let display = profile["display_name"].as_str().unwrap_or("");
+    if !display.is_empty() {
+        return Ok(display.to_string());
+    }
+    let real = profile["real_name"].as_str().unwrap_or("");
+    if !real.is_empty() {
+        return Ok(real.to_string());
+    }
+    let name = json["user"]["name"].as_str().unwrap_or(user_id);
+    Ok(name.to_string())
 }
 
 async fn fetch_latest_message(
