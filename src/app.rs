@@ -37,10 +37,10 @@ pub enum Tab {
 }
 
 const TABS: &[(&str, Tab)] = &[
+    ("Dashboard", Tab::Dashboard),
     ("Tasks", Tab::Tasks),
     ("Goals", Tab::Goals),
     ("Logs", Tab::Logs),
-    ("Dashboard", Tab::Dashboard),
 ];
 
 pub struct App {
@@ -67,7 +67,7 @@ impl App {
         let (bg_tx, bg_rx) = mpsc::sync_channel(16);
         Self {
             should_quit: false,
-            current_tab: Tab::Tasks,
+            current_tab: Tab::Dashboard,
             view_date: today,
             tasks_tab,
             goals_tab,
