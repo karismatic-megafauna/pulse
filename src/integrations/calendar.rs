@@ -80,7 +80,7 @@ pub fn fetch(num_events: u32) -> Result<Vec<CalendarEvent>, String> {
             "-eed",                        // exclude end datetimes
             "-iep", "title,datetime",      // only these properties
             "-po", "datetime,title",       // datetime first
-            "-ps", " /// ",               // property separator
+            "-ps", "///",               // property separator
             "-ss", "",                     // no section separator
             "-b", "",                      // no bullet
             "eventsToday+7",               // events today through +7 days
@@ -103,9 +103,9 @@ fn parse_icalbuddy_output(raw: &str) -> Vec<CalendarEvent> {
         .filter(|line| !line.trim().is_empty())
         .filter_map(|line| {
             let trimmed = line.trim();
-            // Format: "Wed 18 at 09:30 /// Daily Standup" (timed)
-            //      or "Tue 17 /// St. Patrick's Day"       (all-day)
-            let parts: Vec<&str> = trimmed.splitn(2, " /// ").collect();
+            // Format: "Wed 18 at 09:30///Daily Standup" (timed)
+            //      or "Tue 17///St. Patrick's Day"         (all-day)
+            let parts: Vec<&str> = trimmed.splitn(2, "///").collect();
             if parts.len() < 2 {
                 return Some(CalendarEvent {
                     time: String::new(),
@@ -143,7 +143,7 @@ mod tests {
 
     #[test]
     fn test_parse_timed_events() {
-        let raw = "Wed 18 at 09:30 /// Daily Standup\nWed 18 at 14:00 /// 1:1 with manager\n";
+        let raw = "Wed 18 at 09:30///Daily Standup\nWed 18 at 14:00///1:1 with manager\n";
         let events = parse_icalbuddy_output(raw);
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].time, "Wed 18 09:30");
@@ -154,7 +154,7 @@ mod tests {
 
     #[test]
     fn test_parse_all_day_events() {
-        let raw = "Tue 17 /// St. Patrick's Day\n";
+        let raw = "Tue 17///St. Patrick's Day\n";
         let events = parse_icalbuddy_output(raw);
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].time, "Tue 17 all day");
