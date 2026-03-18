@@ -97,29 +97,34 @@ async fn fetch_dm_for_user(
     bot_token: &str,
     user_id: &str,
 ) -> Result<Option<SlackMessage>, String> {
-    // Open/find the DM conversation with this user
-    let open_resp = client
-        .post("https://slack.com/api/conversations.open")
-        .bearer_auth(bot_token)
-        .json(&serde_json::json!({ "users": user_id }))
-        .send()
-        .await
-        .map_err(|e| format!("Slack conversations.open: {}", e))?;
+    // If the ID looks like a channel/DM ID (starts with C or D), use it directly.
+    // Otherwise, treat it as a user ID and open a DM conversation.
+    let channel_id = if user_id.starts_with('D') || user_id.starts_with('C') {
+        user_id.to_string()
+    } else {
+        let open_resp = client
+            .post("https://slack.com/api/conversations.open")
+            .bearer_auth(bot_token)
+            .json(&serde_json::json!({ "users": user_id }))
+            .send()
+            .await
+            .map_err(|e| format!("Slack conversations.open: {}", e))?;
 
-    let open_json: serde_json::Value = open_resp
-        .json()
-        .await
-        .map_err(|e| format!("Slack parse: {}", e))?;
+        let open_json: serde_json::Value = open_resp
+            .json()
+            .await
+            .map_err(|e| format!("Slack parse: {}", e))?;
 
-    if !open_json["ok"].as_bool().unwrap_or(false) {
-        let err = open_json["error"].as_str().unwrap_or("unknown");
-        return Err(format!("Slack: {}", err));
-    }
+        if !open_json["ok"].as_bool().unwrap_or(false) {
+            let err = open_json["error"].as_str().unwrap_or("unknown");
+            return Err(format!("Slack: {}", err));
+        }
 
-    let channel_id = open_json["channel"]["id"]
-        .as_str()
-        .ok_or("No channel ID")?
-        .to_string();
+        open_json["channel"]["id"]
+            .as_str()
+            .ok_or("No channel ID")?
+            .to_string()
+    };
 
     // Get the latest message from this DM
     let history_url = format!(
