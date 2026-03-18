@@ -347,10 +347,13 @@ impl App {
                         format!(" pulse [{}] ", date_label),
                         Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
                     ))
-                    .title_bottom(Span::styled(
-                        " [Tab] switch  [,/.] prev/next  [Ctrl+C/q] quit ",
-                        Style::default().fg(Color::DarkGray),
-                    )),
+                    .title(
+                        ratatui::widgets::block::Title::from(Span::styled(
+                            " Tab:switch  ,/.:nav  q:quit ",
+                            Style::default().fg(Color::DarkGray),
+                        ))
+                        .alignment(ratatui::layout::Alignment::Right),
+                    ),
             )
             .select(selected)
             .highlight_style(
