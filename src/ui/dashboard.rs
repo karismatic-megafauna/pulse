@@ -496,14 +496,19 @@ impl DashboardTab {
                     messages
                         .iter()
                         .map(|m| {
+                            let ago = format_slack_age(&m.timestamp);
                             Line::from(vec![
                                 Span::styled(
                                     format!("{}: ", m.from_user),
                                     Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
                                 ),
                                 Span::styled(
-                                    truncate(&m.text, 60),
+                                    truncate(&m.text, 50),
                                     Style::default().fg(Color::White),
+                                ),
+                                Span::styled(
+                                    format!("  {}", ago),
+                                    Style::default().fg(Color::DarkGray),
                                 ),
                             ])
                         })
@@ -599,6 +604,23 @@ fn truncate(s: &str, max: usize) -> String {
         s.to_string()
     } else {
         format!("{}...", &s[..max.saturating_sub(3)])
+    }
+}
+
+fn format_slack_age(ts: &str) -> String {
+    // Slack timestamps are "epoch.microseconds" e.g. "1710700000.000000"
+    let epoch: f64 = ts.parse().unwrap_or(0.0);
+    if epoch == 0.0 {
+        return String::new();
+    }
+    let now = chrono::Local::now().timestamp() as f64;
+    let secs = (now - epoch).max(0.0) as u64;
+    match secs {
+        0..=59 => "just now".to_string(),
+        60..=3599 => format!("{}m ago", secs / 60),
+        3600..=86399 => format!("{}h ago", secs / 3600),
+        86400..=604799 => format!("{}d ago", secs / 86400),
+        _ => format!("{}w ago", secs / 604800),
     }
 }
 
