@@ -60,7 +60,7 @@ impl JiraCache {
 pub async fn fetch(base_url: &str, email: &str, api_token: &str) -> Result<Vec<JiraIssue>, String> {
     let jql = "assignee = currentUser() AND resolution = Unresolved ORDER BY priority DESC, updated DESC";
     let url = format!(
-        "{}/rest/api/2/search?jql={}&maxResults=15&fields=summary,status,priority",
+        "{}/rest/api/3/search/jql?jql={}&maxResults=15&fields=summary,status,priority",
         base_url.trim_end_matches('/'),
         urlencoding::encode(jql)
     );
