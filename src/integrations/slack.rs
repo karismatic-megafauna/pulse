@@ -94,7 +94,7 @@ pub async fn fetch(
         let channel_id = dm_map.get(user_id.as_str());
         match channel_id {
             Some(ch) => {
-                match fetch_latest_message(&client, bot_token, ch, &display_name).await {
+                match fetch_latest_message(&client, bot_token, ch, user_id, &display_name).await {
                     Ok(Some(msg)) => messages.push(msg),
                     Ok(None) => {}
                     Err(e) => {
@@ -216,12 +216,12 @@ async fn fetch_latest_message(
     client: &Client,
     bot_token: &str,
     channel_id: &str,
+    target_user_id: &str,
     display_name: &str,
 ) -> Result<Option<SlackMessage>, String> {
-
-    // Get the latest message from this DM
+    // Fetch recent messages and find the latest one sent BY the target user
     let history_url = format!(
-        "https://slack.com/api/conversations.history?channel={}&limit=1",
+        "https://slack.com/api/conversations.history?channel={}&limit=20",
         channel_id
     );
 
@@ -243,14 +243,16 @@ async fn fetch_latest_message(
 
     let msg = hist_json["messages"]
         .as_array()
-        .and_then(|msgs| msgs.first())
-        .and_then(|m| {
-            Some(SlackMessage {
-                from_user: display_name.to_string(),
-                text: m["text"].as_str().unwrap_or("").to_string(),
-                channel_id: channel_id.to_string(),
-                timestamp: m["ts"].as_str().unwrap_or("").to_string(),
+        .and_then(|msgs| {
+            msgs.iter().find(|m| {
+                m["user"].as_str().unwrap_or("") == target_user_id
             })
+        })
+        .map(|m| SlackMessage {
+            from_user: display_name.to_string(),
+            text: m["text"].as_str().unwrap_or("").to_string(),
+            channel_id: channel_id.to_string(),
+            timestamp: m["ts"].as_str().unwrap_or("").to_string(),
         });
 
     Ok(msg)
