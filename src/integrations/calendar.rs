@@ -79,10 +79,7 @@ pub fn fetch(num_events: u32) -> Result<Vec<CalendarEvent>, String> {
             "-df", "%a %d",               // date format (short)
             "-eed",                        // exclude end datetimes
             "-iep", "title,datetime",      // only these properties
-            "-po", "datetime,title",       // datetime first
-            "-ps", "///",               // property separator
-            "-ss", "",                     // no section separator
-            "-b", "",                      // no bullet
+            "-po", "title,datetime",       // title first, datetime indented below
             "eventsToday+7",               // events today through +7 days
         ])
         .output()
@@ -98,43 +95,66 @@ pub fn fetch(num_events: u32) -> Result<Vec<CalendarEvent>, String> {
     Ok(events)
 }
 
+/// Parse icalBuddy output in its default multi-line format:
+///   • Title
+///       Wed 18 at 09:30
+///   • All-Day Event
+///       Tue 17
+///
+/// Non-indented lines (starting with "• ") are titles.
+/// Indented lines below them are the datetime.
 fn parse_icalbuddy_output(raw: &str) -> Vec<CalendarEvent> {
-    raw.lines()
-        .filter(|line| !line.trim().is_empty())
-        .filter_map(|line| {
-            let trimmed = line.trim();
-            // Format: "Wed 18 at 09:30///Daily Standup" (timed)
-            //      or "Tue 17///St. Patrick's Day"         (all-day)
-            let parts: Vec<&str> = trimmed.splitn(2, "///").collect();
-            if parts.len() < 2 {
-                return Some(CalendarEvent {
+    let mut events = Vec::new();
+    let mut current_title: Option<String> = None;
+
+    for line in raw.lines() {
+        if line.is_empty() {
+            continue;
+        }
+
+        let is_indented = line.starts_with(' ') || line.starts_with('\t');
+
+        if !is_indented {
+            // New event — save any pending one without a datetime
+            if let Some(title) = current_title.take() {
+                events.push(CalendarEvent {
                     time: String::new(),
-                    title: trimmed.to_string(),
+                    title,
                     calendar: String::new(),
                 });
             }
-
-            let datetime_part = parts[0].trim();
-            let title = parts[1].trim().to_string();
-
-            // Extract time from "Wed 18 at 09:30" or mark as all-day
-            let time = if let Some(at_idx) = datetime_part.find(" at ") {
-                let time_str = &datetime_part[at_idx + 4..];
-                // Include the day prefix for context (e.g. "Wed 18 09:30")
-                let day_prefix = &datetime_part[..at_idx];
-                format!("{} {}", day_prefix, time_str)
+            // Strip bullet prefix
+            let title = line.trim().trim_start_matches("• ").to_string();
+            current_title = Some(title);
+        } else if let Some(title) = current_title.take() {
+            // Indented line = datetime for the current event
+            let datetime = line.trim();
+            let time = if let Some(at_idx) = datetime.find(" at ") {
+                let day = &datetime[..at_idx];
+                let clock = &datetime[at_idx + 4..];
+                format!("{} {}", day, clock)
             } else {
-                // All-day event — just show the day
-                format!("{} all day", datetime_part)
+                // All-day event
+                format!("{} all day", datetime)
             };
-
-            Some(CalendarEvent {
+            events.push(CalendarEvent {
                 time,
                 title,
                 calendar: String::new(),
-            })
-        })
-        .collect()
+            });
+        }
+    }
+
+    // Flush last event if it had no datetime line
+    if let Some(title) = current_title {
+        events.push(CalendarEvent {
+            time: String::new(),
+            title,
+            calendar: String::new(),
+        });
+    }
+
+    events
 }
 
 #[cfg(test)]
@@ -143,22 +163,22 @@ mod tests {
 
     #[test]
     fn test_parse_timed_events() {
-        let raw = "Wed 18 at 09:30///Daily Standup\nWed 18 at 14:00///1:1 with manager\n";
+        let raw = "• Daily Standup\n    Wed 18 at 09:30\n• 1:1 with manager\n    Wed 18 at 14:00\n";
         let events = parse_icalbuddy_output(raw);
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].time, "Wed 18 09:30");
         assert_eq!(events[0].title, "Daily Standup");
-        assert_eq!(events[1].time, "Wed 18 14:00");
+        assert_eq!(events[0].time, "Wed 18 09:30");
         assert_eq!(events[1].title, "1:1 with manager");
+        assert_eq!(events[1].time, "Wed 18 14:00");
     }
 
     #[test]
     fn test_parse_all_day_events() {
-        let raw = "Tue 17///St. Patrick's Day\n";
+        let raw = "• St. Patrick's Day\n    Tue 17\n";
         let events = parse_icalbuddy_output(raw);
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0].time, "Tue 17 all day");
         assert_eq!(events[0].title, "St. Patrick's Day");
+        assert_eq!(events[0].time, "Tue 17 all day");
     }
 
     #[test]
