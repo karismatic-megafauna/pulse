@@ -154,6 +154,10 @@ fn parse_icalbuddy_output(raw: &str) -> Vec<CalendarEvent> {
         });
     }
 
+    // Deduplicate events with the same title + time (e.g. holiday on multiple calendars)
+    let mut seen = std::collections::HashSet::new();
+    events.retain(|ev| seen.insert((ev.title.clone(), ev.time.clone())));
+
     events
 }
 
