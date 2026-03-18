@@ -216,7 +216,7 @@ async fn fetch_latest_message(
     client: &Client,
     bot_token: &str,
     channel_id: &str,
-    user_id: &str,
+    display_name: &str,
 ) -> Result<Option<SlackMessage>, String> {
 
     // Get the latest message from this DM
@@ -246,7 +246,7 @@ async fn fetch_latest_message(
         .and_then(|msgs| msgs.first())
         .and_then(|m| {
             Some(SlackMessage {
-                from_user: m["user"].as_str().unwrap_or(user_id).to_string(),
+                from_user: display_name.to_string(),
                 text: m["text"].as_str().unwrap_or("").to_string(),
                 channel_id: channel_id.to_string(),
                 timestamp: m["ts"].as_str().unwrap_or("").to_string(),
