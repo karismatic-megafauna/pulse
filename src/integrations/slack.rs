@@ -57,7 +57,9 @@ impl SlackCache {
 }
 
 /// Fetch recent DMs from the configured "important" users.
-/// For each user, opens the DM conversation and fetches the latest message.
+/// Uses conversations.list (im:read) to find DM channels, then
+/// conversations.history (im:history) to get the latest message.
+/// Does NOT require im:write scope.
 pub async fn fetch(
     bot_token: &str,
     important_users: &[String],
@@ -71,17 +73,32 @@ pub async fn fetch(
         .build()
         .map_err(|e| e.to_string())?;
 
+    // Build a map of user_id -> DM channel_id using conversations.list
+    let dm_map = list_dm_channels(&client, bot_token).await?;
+
     let mut messages = Vec::new();
 
     for user_id in important_users {
-        match fetch_dm_for_user(&client, bot_token, user_id).await {
-            Ok(Some(msg)) => messages.push(msg),
-            Ok(None) => {} // no messages from this user
-            Err(e) => {
-                // Log but don't fail the whole batch
+        let channel_id = dm_map.get(user_id.as_str());
+        match channel_id {
+            Some(ch) => {
+                match fetch_latest_message(&client, bot_token, ch, user_id).await {
+                    Ok(Some(msg)) => messages.push(msg),
+                    Ok(None) => {}
+                    Err(e) => {
+                        messages.push(SlackMessage {
+                            from_user: user_id.clone(),
+                            text: format!("[error: {}]", e),
+                            channel_id: String::new(),
+                            timestamp: String::new(),
+                        });
+                    }
+                }
+            }
+            None => {
                 messages.push(SlackMessage {
                     from_user: user_id.clone(),
-                    text: format!("[error: {}]", e),
+                    text: "[no DM channel found — bot may not have access]".to_string(),
                     channel_id: String::new(),
                     timestamp: String::new(),
                 });
@@ -92,39 +109,67 @@ pub async fn fetch(
     Ok(messages)
 }
 
-async fn fetch_dm_for_user(
+/// List all IM (DM) channels the bot can see, returning a map of user_id -> channel_id.
+async fn list_dm_channels(
     client: &Client,
     bot_token: &str,
-    user_id: &str,
-) -> Result<Option<SlackMessage>, String> {
-    // If the ID looks like a channel/DM ID (starts with C or D), use it directly.
-    // Otherwise, treat it as a user ID and open a DM conversation.
-    let channel_id = if user_id.starts_with('D') || user_id.starts_with('C') {
-        user_id.to_string()
-    } else {
-        let open_resp = client
-            .post("https://slack.com/api/conversations.open")
+) -> Result<std::collections::HashMap<String, String>, String> {
+    let mut map = std::collections::HashMap::new();
+    let mut cursor = String::new();
+
+    loop {
+        let mut url = "https://slack.com/api/conversations.list?types=im&limit=200".to_string();
+        if !cursor.is_empty() {
+            url.push_str(&format!("&cursor={}", cursor));
+        }
+
+        let resp = client
+            .get(&url)
             .bearer_auth(bot_token)
-            .json(&serde_json::json!({ "users": user_id }))
             .send()
             .await
-            .map_err(|e| format!("Slack conversations.open: {}", e))?;
+            .map_err(|e| format!("Slack conversations.list: {}", e))?;
 
-        let open_json: serde_json::Value = open_resp
+        let json: serde_json::Value = resp
             .json()
             .await
             .map_err(|e| format!("Slack parse: {}", e))?;
 
-        if !open_json["ok"].as_bool().unwrap_or(false) {
-            let err = open_json["error"].as_str().unwrap_or("unknown");
+        if !json["ok"].as_bool().unwrap_or(false) {
+            let err = json["error"].as_str().unwrap_or("unknown");
             return Err(format!("Slack: {}", err));
         }
 
-        open_json["channel"]["id"]
+        if let Some(channels) = json["channels"].as_array() {
+            for ch in channels {
+                if let (Some(id), Some(user)) = (
+                    ch["id"].as_str(),
+                    ch["user"].as_str(),
+                ) {
+                    map.insert(user.to_string(), id.to_string());
+                }
+            }
+        }
+
+        // Paginate if needed
+        let next = json["response_metadata"]["next_cursor"]
             .as_str()
-            .ok_or("No channel ID")?
-            .to_string()
-    };
+            .unwrap_or("");
+        if next.is_empty() {
+            break;
+        }
+        cursor = next.to_string();
+    }
+
+    Ok(map)
+}
+
+async fn fetch_latest_message(
+    client: &Client,
+    bot_token: &str,
+    channel_id: &str,
+    user_id: &str,
+) -> Result<Option<SlackMessage>, String> {
 
     // Get the latest message from this DM
     let history_url = format!(
@@ -155,7 +200,7 @@ async fn fetch_dm_for_user(
             Some(SlackMessage {
                 from_user: m["user"].as_str().unwrap_or(user_id).to_string(),
                 text: m["text"].as_str().unwrap_or("").to_string(),
-                channel_id: channel_id.clone(),
+                channel_id: channel_id.to_string(),
                 timestamp: m["ts"].as_str().unwrap_or("").to_string(),
             })
         });
