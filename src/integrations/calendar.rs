@@ -71,14 +71,17 @@ pub fn fetch(num_events: u32) -> Result<Vec<CalendarEvent>, String> {
     let output = Command::new("icalBuddy")
         .args([
             "-n",                          // only future events
-            "-ea",                         // exclude all-day events ... actually include them
             "-li", &num_events.to_string(), // limit number
             "-nc",                         // no calendar names in title
             "-nrd",                        // no relative dates
-            "-df", "%H:%M",               // time format
-            "-iep", "title,datetime,calendarTitle", // include these properties
-            "-po", "datetime,title,calendarTitle",  // property order
-            "-ps", " | ",                  // property separator
+            "-npn",                        // no property names
+            "-tf", "%H:%M",               // time format (24h)
+            "-df", "%a %d",               // date format (short)
+            "-eed",                        // exclude end datetimes
+            "-iep", "title,datetime",      // only these properties
+            "-po", "datetime,title",       // datetime first
+            "-ps", " /// ",               // property separator
+            "-ss", "",                     // no section separator
             "-b", "",                      // no bullet
             "eventsToday+7",               // events today through +7 days
         ])
@@ -100,27 +103,36 @@ fn parse_icalbuddy_output(raw: &str) -> Vec<CalendarEvent> {
         .filter(|line| !line.trim().is_empty())
         .filter_map(|line| {
             let trimmed = line.trim();
-            // Expected format: "HH:MM | Title | CalendarName"
-            // or just "Title" for all-day events
-            let parts: Vec<&str> = trimmed.splitn(3, " | ").collect();
-            match parts.len() {
-                3 => Some(CalendarEvent {
-                    time: parts[0].trim().to_string(),
-                    title: parts[1].trim().to_string(),
-                    calendar: parts[2].trim().to_string(),
-                }),
-                2 => Some(CalendarEvent {
-                    time: parts[0].trim().to_string(),
-                    title: parts[1].trim().to_string(),
-                    calendar: String::new(),
-                }),
-                1 => Some(CalendarEvent {
+            // Format: "Wed 18 at 09:30 /// Daily Standup" (timed)
+            //      or "Tue 17 /// St. Patrick's Day"       (all-day)
+            let parts: Vec<&str> = trimmed.splitn(2, " /// ").collect();
+            if parts.len() < 2 {
+                return Some(CalendarEvent {
                     time: String::new(),
-                    title: parts[0].trim().to_string(),
+                    title: trimmed.to_string(),
                     calendar: String::new(),
-                }),
-                _ => None,
+                });
             }
+
+            let datetime_part = parts[0].trim();
+            let title = parts[1].trim().to_string();
+
+            // Extract time from "Wed 18 at 09:30" or mark as all-day
+            let time = if let Some(at_idx) = datetime_part.find(" at ") {
+                let time_str = &datetime_part[at_idx + 4..];
+                // Include the day prefix for context (e.g. "Wed 18 09:30")
+                let day_prefix = &datetime_part[..at_idx];
+                format!("{} {}", day_prefix, time_str)
+            } else {
+                // All-day event — just show the day
+                format!("{} all day", datetime_part)
+            };
+
+            Some(CalendarEvent {
+                time,
+                title,
+                calendar: String::new(),
+            })
         })
         .collect()
 }
@@ -130,23 +142,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_icalbuddy_three_fields() {
-        let raw = "09:30 | Standup | Work\n14:00 | 1:1 with manager | Work\n";
+    fn test_parse_timed_events() {
+        let raw = "Wed 18 at 09:30 /// Daily Standup\nWed 18 at 14:00 /// 1:1 with manager\n";
         let events = parse_icalbuddy_output(raw);
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].time, "09:30");
-        assert_eq!(events[0].title, "Standup");
-        assert_eq!(events[0].calendar, "Work");
+        assert_eq!(events[0].time, "Wed 18 09:30");
+        assert_eq!(events[0].title, "Daily Standup");
+        assert_eq!(events[1].time, "Wed 18 14:00");
         assert_eq!(events[1].title, "1:1 with manager");
     }
 
     #[test]
-    fn test_parse_icalbuddy_two_fields() {
-        let raw = "10:00 | Team lunch\n";
+    fn test_parse_all_day_events() {
+        let raw = "Tue 17 /// St. Patrick's Day\n";
         let events = parse_icalbuddy_output(raw);
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0].time, "10:00");
-        assert_eq!(events[0].title, "Team lunch");
+        assert_eq!(events[0].time, "Tue 17 all day");
+        assert_eq!(events[0].title, "St. Patrick's Day");
     }
 
     #[test]
