@@ -32,6 +32,7 @@ pub struct DashboardTab {
     focus: Focus,
     jira_list_state: ListState,
     gitlab_list_state: ListState,
+    jira_hide_done: bool,
 }
 
 impl DashboardTab {
@@ -45,6 +46,7 @@ impl DashboardTab {
             focus: Focus::Jira,
             jira_list_state: ListState::default(),
             gitlab_list_state: ListState::default(),
+            jira_hide_done: false,
         }
     }
 
@@ -73,24 +75,40 @@ impl DashboardTab {
                 self.move_focus_up();
                 DashboardAction::None
             }
+            KeyCode::Char('f') => {
+                self.jira_hide_done = !self.jira_hide_done;
+                // Reset selection when toggling filter
+                self.jira_list_state.select(None);
+                DashboardAction::None
+            }
             // Enter opens the selected issue/MR in the browser
             KeyCode::Enter => self.open_selected(),
             _ => DashboardAction::None,
         }
     }
 
+    fn filtered_jira_issues(&self) -> Vec<&crate::integrations::jira::JiraIssue> {
+        if let JiraState::Ready(issues) = &self.jira_cache.state {
+            if self.jira_hide_done {
+                issues.iter().filter(|i| !is_done_status(&i.status)).collect()
+            } else {
+                issues.iter().collect()
+            }
+        } else {
+            vec![]
+        }
+    }
+
     fn move_focus_down(&mut self) {
         match self.focus {
             Focus::Jira => {
-                if let JiraState::Ready(issues) = &self.jira_cache.state {
-                    let len = issues.len();
-                    if len > 0 {
-                        let next = match self.jira_list_state.selected() {
-                            Some(i) => (i + 1).min(len - 1),
-                            None => 0,
-                        };
-                        self.jira_list_state.select(Some(next));
-                    }
+                let len = self.filtered_jira_issues().len();
+                if len > 0 {
+                    let next = match self.jira_list_state.selected() {
+                        Some(i) => (i + 1).min(len - 1),
+                        None => 0,
+                    };
+                    self.jira_list_state.select(Some(next));
                 }
             }
             Focus::Gitlab => {
@@ -111,7 +129,7 @@ impl DashboardTab {
     fn move_focus_up(&mut self) {
         match self.focus {
             Focus::Jira => {
-                if let JiraState::Ready(_) = &self.jira_cache.state {
+                if !self.filtered_jira_issues().is_empty() {
                     let prev = match self.jira_list_state.selected() {
                         Some(0) | None => 0,
                         Some(i) => i - 1,
@@ -134,11 +152,10 @@ impl DashboardTab {
     fn open_selected(&self) -> DashboardAction {
         match self.focus {
             Focus::Jira => {
-                if let JiraState::Ready(issues) = &self.jira_cache.state {
-                    if let Some(sel) = self.jira_list_state.selected() {
-                        if let Some(issue) = issues.get(sel) {
-                            return DashboardAction::OpenUrl(issue.url.clone());
-                        }
+                let filtered = self.filtered_jira_issues();
+                if let Some(sel) = self.jira_list_state.selected() {
+                    if let Some(issue) = filtered.get(sel) {
+                        return DashboardAction::OpenUrl(issue.url.clone());
                     }
                 }
             }
@@ -203,9 +220,11 @@ impl DashboardTab {
         self.render_summary(frame, rows[2], conn, today);
 
         // Hint bar
-        let hint = Paragraph::new(
-            " [r]efresh all  [j/k] scroll  [h/l] focus Jira/GitLab  [Enter] open in browser  [q]uit",
-        )
+        let filter_label = if self.jira_hide_done { "f:active" } else { "f:off" };
+        let hint = Paragraph::new(format!(
+            " [r]efresh  [j/k] scroll  [h/l] focus  [Enter] open  [f]ilter done ({})  [q]uit",
+            filter_label
+        ))
         .style(Style::default().fg(Color::DarkGray));
         frame.render_widget(hint, rows[3]);
     }
@@ -291,8 +310,9 @@ impl DashboardTab {
                 .wrap(Wrap { trim: true });
                 frame.render_widget(p, area);
             }
-            JiraState::Ready(issues) => {
-                let items: Vec<ListItem> = issues
+            JiraState::Ready(_) => {
+                let filtered = self.filtered_jira_issues();
+                let items: Vec<ListItem> = filtered
                     .iter()
                     .map(|i| {
                         let status_color = match i.status.to_lowercase().as_str() {
@@ -318,7 +338,8 @@ impl DashboardTab {
                     })
                     .collect();
 
-                let title = format!(" Jira Issues ({}) ", issues.len());
+                let filter_indicator = if self.jira_hide_done { " [filtered]" } else { "" };
+                let title = format!(" Jira Issues ({}){} ", filtered.len(), filter_indicator);
                 let list = List::new(items)
                     .block(Block::default().borders(Borders::ALL).title(title).border_style(border_style))
                     .highlight_style(Style::default().bg(Color::DarkGray).add_modifier(Modifier::BOLD))
@@ -579,6 +600,11 @@ fn truncate(s: &str, max: usize) -> String {
     } else {
         format!("{}...", &s[..max.saturating_sub(3)])
     }
+}
+
+fn is_done_status(status: &str) -> bool {
+    let s = status.to_lowercase();
+    s.contains("done") || s.contains("closed") || s.contains("resolved") || s.contains("complete")
 }
 
 pub enum DashboardAction {
