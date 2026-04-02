@@ -73,6 +73,48 @@ const MIGRATIONS: &[&str] = &[
 
     INSERT OR IGNORE INTO schema_version VALUES (1);
     ",
+    // v2: app metadata for daily start screen
+    "
+    CREATE TABLE IF NOT EXISTS app_metadata (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );
+    INSERT OR IGNORE INTO schema_version VALUES (2);
+    ",
+    // v3: habits system
+    "
+    CREATE TABLE IF NOT EXISTS habits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        frequency INTEGER NOT NULL DEFAULT 1,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS habit_checkins (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        habit_id INTEGER NOT NULL REFERENCES habits(id) ON DELETE CASCADE,
+        date TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(habit_id, date)
+    );
+
+    INSERT OR IGNORE INTO schema_version VALUES (3);
+    ",
+    // v4: focus timer sessions
+    "
+    CREATE TABLE IF NOT EXISTS focus_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id INTEGER NOT NULL,
+        task_title TEXT NOT NULL,
+        duration_seconds INTEGER NOT NULL,
+        completed INTEGER NOT NULL DEFAULT 0,
+        started_at TEXT NOT NULL,
+        ended_at TEXT NOT NULL
+    );
+
+    INSERT OR IGNORE INTO schema_version VALUES (4);
+    ",
 ];
 
 fn get_schema_version(conn: &Connection) -> usize {
@@ -131,6 +173,6 @@ mod tests {
     #[test]
     fn test_schema_version_set_after_migration() {
         let conn = in_memory_conn();
-        assert_eq!(get_schema_version(&conn), 1);
+        assert_eq!(get_schema_version(&conn), MIGRATIONS.len());
     }
 }

@@ -8,7 +8,6 @@ pub struct JiraIssue {
     pub key: String,
     pub summary: String,
     pub status: String,
-    pub priority: String,
     pub url: String,
 }
 
@@ -105,7 +104,6 @@ pub async fn fetch(base_url: &str, email: &str, api_token: &str) -> Result<Vec<J
                 key,
                 summary: fields["summary"].as_str().unwrap_or("").to_string(),
                 status: fields["status"]["name"].as_str().unwrap_or("").to_string(),
-                priority: fields["priority"]["name"].as_str().unwrap_or("").to_string(),
             })
         })
         .collect();
@@ -175,8 +173,7 @@ mod tests {
                     key,
                     summary: fields["summary"].as_str().unwrap_or("").to_string(),
                     status: fields["status"]["name"].as_str().unwrap_or("").to_string(),
-                    priority: fields["priority"]["name"].as_str().unwrap_or("").to_string(),
-                })
+                    })
             })
             .collect();
 

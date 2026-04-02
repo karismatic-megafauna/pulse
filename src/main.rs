@@ -13,6 +13,7 @@ mod db;
 mod integrations;
 mod models;
 mod reports;
+mod site_blocker;
 mod ui;
 
 use app::App;

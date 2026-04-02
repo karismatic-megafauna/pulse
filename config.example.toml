@@ -4,11 +4,13 @@
 [general]
 # "lbs" or "kg"
 weight_unit = "lbs"
+# Hour (0-23) when a new day starts for the daily start screen
+new_day_hour = 4
 
 [weather]
 enabled = true
-location = "Beverly_Hills"  # city name, zip code, or lat,lon
 units = "imperial"           # "imperial" (F, mph) or "metric" (C, km/h)
+# Location is auto-detected from your IP address
 
 [jira]
 enabled = false
@@ -30,3 +32,10 @@ important_users = ["U12345678", "U87654321"]  # Slack user IDs
 enabled = false
 num_events = 5  # number of upcoming events to show
 # Requires icalBuddy on macOS: brew install ical-buddy
+
+[focus_timer]
+short_minutes = 15
+medium_minutes = 25
+long_minutes = 45
+# Sites to block during focus sessions (requires sudo for /etc/hosts access)
+blocked_sites = ["reddit.com", "www.reddit.com"]

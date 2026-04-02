@@ -7,7 +7,6 @@ const CACHE_TTL: Duration = Duration::from_secs(5 * 60);
 pub struct SlackMessage {
     pub from_user: String,
     pub text: String,
-    pub channel_id: String,
     pub timestamp: String,
 }
 
@@ -101,7 +100,6 @@ pub async fn fetch(
                         messages.push(SlackMessage {
                             from_user: display_name.clone(),
                             text: format!("[error: {}]", e),
-                            channel_id: String::new(),
                             timestamp: String::new(),
                         });
                     }
@@ -111,7 +109,6 @@ pub async fn fetch(
                 messages.push(SlackMessage {
                     from_user: display_name.clone(),
                     text: "[no DM channel found — bot may not have access]".to_string(),
-                    channel_id: String::new(),
                     timestamp: String::new(),
                 });
             }
@@ -251,7 +248,6 @@ async fn fetch_latest_message(
         .map(|m| SlackMessage {
             from_user: display_name.to_string(),
             text: m["text"].as_str().unwrap_or("").to_string(),
-            channel_id: channel_id.to_string(),
             timestamp: m["ts"].as_str().unwrap_or("").to_string(),
         });
 
@@ -273,7 +269,6 @@ mod tests {
         cache.set_result(Ok(vec![SlackMessage {
             from_user: "U123".into(),
             text: "hello".into(),
-            channel_id: "C456".into(),
             timestamp: "12345.6789".into(),
         }]));
         assert!(!cache.needs_refresh());

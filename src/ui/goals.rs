@@ -223,7 +223,7 @@ impl GoalsTab {
                     Span::styled(g.title.clone(), style),
                     Span::styled(
                         format!("  {} {}%", progress_bar, g.progress),
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(Color::Gray),
                     ),
                 ]))
             })

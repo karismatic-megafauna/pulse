@@ -36,30 +36,6 @@ pub fn get_for_date(conn: &Connection, date: NaiveDate) -> Result<Option<Journal
     Ok(rows.next().and_then(|r| r.ok()))
 }
 
-pub fn list_recent(conn: &Connection, limit: u32) -> Result<Vec<JournalEntry>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, date, content, mood, created_at, updated_at
-         FROM journal_entries ORDER BY date DESC LIMIT ?1",
-    )?;
-    let rows = stmt
-        .query_map(params![limit], |row| {
-            Ok(JournalEntry {
-                id: row.get(0)?,
-                date: {
-                    let s: String = row.get(1)?;
-                    NaiveDate::parse_from_str(&s, "%Y-%m-%d")
-                        .unwrap_or_else(|_| Local::now().date_naive())
-                },
-                content: row.get(2)?,
-                mood: row.get::<_, Option<i64>>(3)?.map(|v| v as u8),
-                created_at: row.get(4)?,
-                updated_at: row.get(5)?,
-            })
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
-    Ok(rows)
-}
 
 /// Upsert: one entry per day — updates if exists, inserts if not.
 pub fn upsert(
@@ -144,25 +120,8 @@ mod tests {
         let date = NaiveDate::from_ymd_opt(2026, 3, 17).unwrap();
         upsert(&conn, date, "First draft", Some(3)).unwrap();
         upsert(&conn, date, "Updated entry", Some(5)).unwrap();
-        let entries = list_recent(&conn, 10).unwrap();
-        assert_eq!(entries.len(), 1); // only one per day
-        assert_eq!(entries[0].content, "Updated entry");
-        assert_eq!(entries[0].mood, Some(5));
-    }
-
-    #[test]
-    fn test_list_recent_ordering() {
-        let conn = setup();
-        let d1 = NaiveDate::from_ymd_opt(2026, 3, 15).unwrap();
-        let d2 = NaiveDate::from_ymd_opt(2026, 3, 16).unwrap();
-        let d3 = NaiveDate::from_ymd_opt(2026, 3, 17).unwrap();
-        upsert(&conn, d1, "Day 1", None).unwrap();
-        upsert(&conn, d2, "Day 2", None).unwrap();
-        upsert(&conn, d3, "Day 3", None).unwrap();
-
-        let entries = list_recent(&conn, 10).unwrap();
-        // Should be most recent first
-        assert_eq!(entries[0].date, d3);
-        assert_eq!(entries[2].date, d1);
+        let entry = get_for_date(&conn, date).unwrap().unwrap();
+        assert_eq!(entry.content, "Updated entry");
+        assert_eq!(entry.mood, Some(5));
     }
 }

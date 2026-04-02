@@ -85,6 +85,23 @@ pub fn insert(conn: &Connection, title: &str, date: NaiveDate) -> Result<Task> {
     })
 }
 
+/// Copy incomplete tasks from `from_date` to `to_date` (skips if task title already exists on to_date)
+pub fn rollover_incomplete(conn: &Connection, from_date: NaiveDate, to_date: NaiveDate) -> Result<usize> {
+    let from_tasks = list_for_date(conn, from_date)?;
+    let to_tasks = list_for_date(conn, to_date)?;
+    let existing_titles: std::collections::HashSet<&str> =
+        to_tasks.iter().map(|t| t.title.as_str()).collect();
+
+    let mut count = 0;
+    for task in &from_tasks {
+        if !task.completed && !existing_titles.contains(task.title.as_str()) {
+            insert(conn, &task.title, to_date)?;
+            count += 1;
+        }
+    }
+    Ok(count)
+}
+
 pub fn toggle_complete(conn: &Connection, id: i64) -> Result<bool> {
     let now = Local::now().to_rfc3339();
     let current: i64 = conn.query_row(
@@ -105,6 +122,7 @@ pub fn delete(conn: &Connection, id: i64) -> Result<()> {
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn count_for_date(conn: &Connection, date: NaiveDate) -> Result<(usize, usize)> {
     let date_str = date.format("%Y-%m-%d").to_string();
     let total: usize = conn.query_row(

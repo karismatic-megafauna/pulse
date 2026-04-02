@@ -1,5 +1,4 @@
-pub mod goal;
-pub mod journal;
+pub mod focus_session;
+pub mod habit;
+pub mod note;
 pub mod task;
-pub mod weight;
-pub mod workout;

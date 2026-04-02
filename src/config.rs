@@ -17,17 +17,29 @@ pub struct Config {
     pub slack: SlackConfig,
     #[serde(default)]
     pub calendar: CalendarConfig,
+    #[serde(default)]
+    pub notes: NotesConfig,
+    #[serde(default)]
+    pub focus_timer: FocusTimerConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeneralConfig {
     pub weight_unit: String,
+    /// Hour (0-23) when a new day starts for the daily start screen. Default: 4 (4am).
+    #[serde(default = "default_new_day_hour")]
+    pub new_day_hour: u32,
+}
+
+fn default_new_day_hour() -> u32 {
+    4
 }
 
 impl Default for GeneralConfig {
     fn default() -> Self {
         Self {
             weight_unit: "lbs".to_string(),
+            new_day_hour: 4,
         }
     }
 }
@@ -35,7 +47,6 @@ impl Default for GeneralConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WeatherConfig {
     pub enabled: bool,
-    pub location: String,
     pub units: String,
 }
 
@@ -43,7 +54,6 @@ impl Default for WeatherConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            location: String::new(),
             units: "imperial".to_string(),
         }
     }
@@ -73,6 +83,10 @@ pub struct GitlabConfig {
     pub enabled: bool,
     pub base_url: String,
     pub private_token: String,
+    #[serde(default)]
+    pub project: String,
+    #[serde(default)]
+    pub ignore_authors: Vec<String>,
 }
 
 impl Default for GitlabConfig {
@@ -81,6 +95,8 @@ impl Default for GitlabConfig {
             enabled: false,
             base_url: String::new(),
             private_token: String::new(),
+            project: String::new(),
+            ignore_authors: vec![],
         }
     }
 }
@@ -99,6 +115,20 @@ impl Default for SlackConfig {
             enabled: false,
             bot_token: String::new(),
             important_users: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NotesConfig {
+    #[serde(default)]
+    pub editor: String,
+}
+
+impl Default for NotesConfig {
+    fn default() -> Self {
+        Self {
+            editor: String::new(),
         }
     }
 }
@@ -123,6 +153,33 @@ impl Default for CalendarConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FocusTimerConfig {
+    #[serde(default = "default_short_minutes")]
+    pub short_minutes: u32,
+    #[serde(default = "default_medium_minutes")]
+    pub medium_minutes: u32,
+    #[serde(default = "default_long_minutes")]
+    pub long_minutes: u32,
+    #[serde(default)]
+    pub blocked_sites: Vec<String>,
+}
+
+fn default_short_minutes() -> u32 { 15 }
+fn default_medium_minutes() -> u32 { 25 }
+fn default_long_minutes() -> u32 { 45 }
+
+impl Default for FocusTimerConfig {
+    fn default() -> Self {
+        Self {
+            short_minutes: 15,
+            medium_minutes: 25,
+            long_minutes: 45,
+            blocked_sites: vec![],
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -132,6 +189,8 @@ impl Default for Config {
             gitlab: GitlabConfig::default(),
             slack: SlackConfig::default(),
             calendar: CalendarConfig::default(),
+            notes: NotesConfig::default(),
+            focus_timer: FocusTimerConfig::default(),
         }
     }
 }

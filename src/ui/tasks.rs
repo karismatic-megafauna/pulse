@@ -83,12 +83,22 @@ impl TasksTab {
                 self.input.set_active(true);
                 TaskAction::None
             }
-            KeyCode::Enter | KeyCode::Char(' ') => {
+            KeyCode::Char('x') | KeyCode::Char(' ') => {
                 if let Some(sel) = self.list_state.selected() {
                     if let Some(task) = self.tasks.get(sel) {
                         let id = task.id;
                         let _ = task::toggle_complete(conn, id);
                         self.reload(conn);
+                    }
+                }
+                TaskAction::None
+            }
+            KeyCode::Char('s') => {
+                if let Some(sel) = self.list_state.selected() {
+                    if let Some(task) = self.tasks.get(sel) {
+                        if !task.completed {
+                            return TaskAction::StartFocusTimer(task.id, task.title.clone());
+                        }
                     }
                 }
                 TaskAction::None
@@ -193,13 +203,16 @@ impl TasksTab {
                 let checkbox = if t.completed { "[x]" } else { "[ ]" };
                 let style = if t.completed {
                     Style::default()
-                        .fg(Color::DarkGray)
+                        .fg(Color::Gray)
                         .add_modifier(Modifier::CROSSED_OUT)
                 } else {
                     Style::default()
                 };
                 ListItem::new(Line::from(vec![
-                    Span::raw(format!("{} ", checkbox)),
+                    Span::styled(
+                        format!("{} ", checkbox),
+                        Style::default().fg(if t.completed { Color::Green } else { Color::Gray }),
+                    ),
                     Span::styled(&t.title, style),
                 ]))
             })
@@ -252,7 +265,7 @@ impl TasksTab {
                 " [a]dd  [q]uit".to_string()
             } else {
                 format!(
-                    " {}/{} done  [a]dd  [Enter]toggle  [d]elete  [q]quit",
+                    " {}/{} done  [a]dd  [x]toggle  [s]focus  [d]elete  [q]quit",
                     done, total
                 )
             };
@@ -264,5 +277,6 @@ impl TasksTab {
 
 pub enum TaskAction {
     None,
+    StartFocusTimer(i64, String),
     Quit,
 }
