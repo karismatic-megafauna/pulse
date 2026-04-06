@@ -47,5 +47,10 @@ async fn main() -> Result<()> {
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
 
-    result
+    // Check for errors before exiting
+    result?;
+
+    // Exit immediately to avoid panics from background threads still using the
+    // Tokio runtime handle during shutdown.
+    std::process::exit(0);
 }
