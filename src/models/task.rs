@@ -117,6 +117,15 @@ pub fn toggle_complete(conn: &Connection, id: i64) -> Result<bool> {
     Ok(new_val != 0)
 }
 
+pub fn update_title(conn: &Connection, id: i64, title: &str) -> Result<()> {
+    let now = Local::now().to_rfc3339();
+    conn.execute(
+        "UPDATE tasks SET title = ?1, updated_at = ?2 WHERE id = ?3",
+        params![title, now, id],
+    )?;
+    Ok(())
+}
+
 pub fn delete(conn: &Connection, id: i64) -> Result<()> {
     conn.execute("DELETE FROM tasks WHERE id = ?1", params![id])?;
     Ok(())
@@ -206,6 +215,17 @@ mod tests {
         let (done, total) = count_for_date(&conn, date).unwrap();
         assert_eq!(total, 2);
         assert_eq!(done, 1);
+    }
+
+    #[test]
+    fn test_update_title() {
+        let conn = setup();
+        let date = NaiveDate::from_ymd_opt(2026, 3, 17).unwrap();
+        let task = insert(&conn, "Old title", date).unwrap();
+        update_title(&conn, task.id, "New title").unwrap();
+        let tasks = list_for_date(&conn, date).unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].title, "New title");
     }
 
     #[test]

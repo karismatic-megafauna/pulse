@@ -16,6 +16,7 @@ use crate::ui::input::{InputAction, InputWidget};
 enum Mode {
     Normal,
     Adding,
+    Editing(i64),
     ConfirmDelete,
 }
 
@@ -44,7 +45,7 @@ impl TasksTab {
     }
 
     pub fn is_capturing_input(&self) -> bool {
-        self.mode != Mode::Normal
+        !matches!(self.mode, Mode::Normal)
     }
 
     pub fn reload(&mut self, conn: &Connection) {
@@ -63,6 +64,7 @@ impl TasksTab {
         match self.mode {
             Mode::Normal => self.handle_normal(key, conn),
             Mode::Adding => self.handle_adding(key, conn),
+            Mode::Editing(id) => self.handle_editing(key, conn, id),
             Mode::ConfirmDelete => self.handle_confirm_delete(key, conn),
         }
     }
@@ -103,6 +105,17 @@ impl TasksTab {
                 }
                 TaskAction::None
             }
+            KeyCode::Char('e') => {
+                if let Some(sel) = self.list_state.selected() {
+                    if let Some(task) = self.tasks.get(sel) {
+                        self.input.clear();
+                        self.input.set_value(&task.title);
+                        self.input.set_active(true);
+                        self.mode = Mode::Editing(task.id);
+                    }
+                }
+                TaskAction::None
+            }
             KeyCode::Char('d') => {
                 if self.list_state.selected().is_some() {
                     self.mode = Mode::ConfirmDelete;
@@ -123,6 +136,24 @@ impl TasksTab {
                 if !self.tasks.is_empty() {
                     self.list_state.select(Some(self.tasks.len() - 1));
                 }
+                self.mode = Mode::Normal;
+                self.input.set_active(false);
+                TaskAction::None
+            }
+            InputAction::Cancel => {
+                self.mode = Mode::Normal;
+                self.input.set_active(false);
+                TaskAction::None
+            }
+            InputAction::None => TaskAction::None,
+        }
+    }
+
+    fn handle_editing(&mut self, key: KeyEvent, conn: &Connection, id: i64) -> TaskAction {
+        match self.input.handle_key(key) {
+            InputAction::Submit(title) => {
+                let _ = task::update_title(conn, id, &title);
+                self.reload(conn);
                 self.mode = Mode::Normal;
                 self.input.set_active(false);
                 TaskAction::None
@@ -179,7 +210,7 @@ impl TasksTab {
     }
 
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
-        let chunks = if self.mode == Mode::Adding {
+        let chunks = if matches!(self.mode, Mode::Adding | Mode::Editing(_)) {
             Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
@@ -240,6 +271,11 @@ impl TasksTab {
             let hint = Paragraph::new("Enter to save · Esc to cancel")
                 .style(Style::default().fg(Color::DarkGray));
             frame.render_widget(hint, chunks[chunks.len() - 1]);
+        } else if matches!(self.mode, Mode::Editing(_)) {
+            self.input.render(frame, chunks[1], " Edit Task ");
+            let hint = Paragraph::new("Enter to save · Esc to cancel")
+                .style(Style::default().fg(Color::DarkGray));
+            frame.render_widget(hint, chunks[chunks.len() - 1]);
         } else if self.mode == Mode::ConfirmDelete {
             let task_name = self
                 .list_state
@@ -265,7 +301,7 @@ impl TasksTab {
                 " [a]dd  [q]uit".to_string()
             } else {
                 format!(
-                    " {}/{} done  [a]dd  [x]toggle  [s]focus  [d]elete  [q]quit",
+                    " {}/{} done  [a]dd  [e]dit  [x]toggle  [s]focus  [d]elete  [q]quit",
                     done, total
                 )
             };

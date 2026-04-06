@@ -25,6 +25,11 @@ impl InputWidget {
         self.cursor = 0;
     }
 
+    pub fn set_value(&mut self, val: &str) {
+        self.value = val.to_string();
+        self.cursor = self.value.len();
+    }
+
     pub fn set_active(&mut self, active: bool) {
         self.active = active;
     }
@@ -34,13 +39,19 @@ impl InputWidget {
         match key.code {
             KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.value.insert(self.cursor, c);
-                self.cursor += 1;
+                self.cursor += c.len_utf8();
                 InputAction::None
             }
             KeyCode::Backspace => {
                 if self.cursor > 0 {
-                    self.cursor -= 1;
-                    self.value.remove(self.cursor);
+                    // Find the previous char boundary
+                    let prev = self.value[..self.cursor]
+                        .char_indices()
+                        .next_back()
+                        .map(|(i, _)| i)
+                        .unwrap_or(0);
+                    self.value.remove(prev);
+                    self.cursor = prev;
                 }
                 InputAction::None
             }
@@ -52,13 +63,21 @@ impl InputWidget {
             }
             KeyCode::Left => {
                 if self.cursor > 0 {
-                    self.cursor -= 1;
+                    self.cursor = self.value[..self.cursor]
+                        .char_indices()
+                        .next_back()
+                        .map(|(i, _)| i)
+                        .unwrap_or(0);
                 }
                 InputAction::None
             }
             KeyCode::Right => {
                 if self.cursor < self.value.len() {
-                    self.cursor += 1;
+                    self.cursor = self.value[self.cursor..]
+                        .char_indices()
+                        .nth(1)
+                        .map(|(i, _)| self.cursor + i)
+                        .unwrap_or(self.value.len());
                 }
                 InputAction::None
             }
@@ -97,10 +116,9 @@ impl InputWidget {
 
         // Show value with cursor marker
         let before = &self.value[..self.cursor];
-        let cursor_char = self
-            .value
+        let cursor_char = self.value[self.cursor..]
             .chars()
-            .nth(self.cursor)
+            .next()
             .map(|c| c.to_string())
             .unwrap_or_else(|| " ".to_string());
         let after = if self.cursor < self.value.len() {
