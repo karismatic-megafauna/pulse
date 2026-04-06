@@ -18,7 +18,7 @@ use std::time;
 ///   0.2.0 = Boisterous Budgie
 ///   0.3.0 = Cunning Cormorant
 ///   …and so on.
-const VERSION_NAME: &str = "Ambitious Albatross";
+const VERSION_NAME: &str = "Boisterous Budgie";
 const BUILD_TIME: &str = env!("PULSE_BUILD_TIME");
 
 use crate::config::Config;
