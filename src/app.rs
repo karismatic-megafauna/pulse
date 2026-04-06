@@ -5,12 +5,21 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Tabs},
+    widgets::{Block, Borders, List, ListItem, Paragraph, Tabs},
     Frame, Terminal,
 };
 use rusqlite::Connection;
 use std::sync::mpsc;
 use std::time;
+
+/// Alliterative bird name for the current version.
+/// Advance alphabetically with each release:
+///   0.1.0 = Ambitious Albatross
+///   0.2.0 = Boisterous Budgie
+///   0.3.0 = Cunning Cormorant
+///   …and so on.
+const VERSION_NAME: &str = "Ambitious Albatross";
+const BUILD_TIME: &str = env!("PULSE_BUILD_TIME");
 
 use crate::config::Config;
 use crate::integrations::{calendar, gitlab, jira, slack, weather};
@@ -104,6 +113,7 @@ pub struct App {
     bg_rx: mpsc::Receiver<BackgroundMsg>,
     active_timer: Option<ActiveTimer>,
     timer_picker: Option<FocusTimerPicker>,
+    confirm_quit: bool,
 }
 
 impl App {
@@ -156,6 +166,7 @@ impl App {
             bg_rx,
             active_timer: None,
             timer_picker: None,
+            confirm_quit: false,
         }
     }
 
@@ -245,7 +256,7 @@ impl App {
                     if let Some(ds) = &mut self.daily_start {
                         ds.handle_key(key, &self.conn);
                         if ds.dismissed {
-                            let today = Local::now().date_naive();
+                            let today = self.effective_today();
                             daily_start::set_last_opened_date(&self.conn, today);
                             // Reload tasks/goals since user may have added some
                             self.tasks_tab.reload(&self.conn);
@@ -437,6 +448,15 @@ impl App {
 
     /// Returns Some(path) if a file should be opened in $EDITOR.
     fn handle_key(&mut self, key: KeyEvent) -> Option<std::path::PathBuf> {
+        // Quit confirmation intercepts all input
+        if self.confirm_quit {
+            match key.code {
+                KeyCode::Char('y') | KeyCode::Char('Y') => self.should_quit = true,
+                _ => self.confirm_quit = false,
+            }
+            return None;
+        }
+
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             self.should_quit = true;
             return None;
@@ -522,7 +542,7 @@ impl App {
         match self.current_tab {
             Tab::Tasks => {
                 match self.tasks_tab.handle_key(key, &self.conn) {
-                    TaskAction::Quit => self.should_quit = true,
+                    TaskAction::Quit => self.confirm_quit = true,
                     TaskAction::StartFocusTimer(id, title) => {
                         if self.active_timer.is_none() {
                             self.timer_picker = Some(FocusTimerPicker {
@@ -537,19 +557,19 @@ impl App {
             }
             Tab::Habits => {
                 if let HabitAction::Quit = self.habits_tab.handle_key(key, &self.conn) {
-                    self.should_quit = true;
+                    self.confirm_quit = true;
                 }
             }
             Tab::Logs => match self.logs_tab.handle_key(key) {
                 LogAction::EditJournal(path) => return Some(path),
-                LogAction::Quit => self.should_quit = true,
+                LogAction::Quit => self.confirm_quit = true,
                 LogAction::None => {}
             },
             Tab::Notes => match self.notes_tab.handle_key(key) {
                 NotesAction::EditNote(filename) => {
                     return Some(crate::models::note::note_path(&filename));
                 }
-                NotesAction::Quit => self.should_quit = true,
+                NotesAction::Quit => self.confirm_quit = true,
                 NotesAction::None => {}
             },
             Tab::Dashboard => match self.dashboard_tab.handle_key(key) {
@@ -585,7 +605,7 @@ impl App {
                         });
                     }
                 }
-                DashboardAction::Quit => self.should_quit = true,
+                DashboardAction::Quit => self.confirm_quit = true,
                 DashboardAction::None => {}
             },
         }
@@ -634,6 +654,11 @@ impl App {
         // Timer picker popup (rendered on top of everything)
         if let Some(picker) = &self.timer_picker {
             self.render_timer_picker(frame, area, picker);
+        }
+
+        // Quit confirmation popup
+        if self.confirm_quit {
+            self.render_confirm_quit(frame, area);
         }
     }
 
@@ -699,6 +724,13 @@ impl App {
                 Block::default()
                     .borders(Borders::ALL)
                     .title(title_spans)
+                    .title(
+                        Line::from(Span::styled(
+                            format!(" {} \u{00b7} {} ", VERSION_NAME, BUILD_TIME),
+                            Style::default().fg(Color::DarkGray),
+                        ))
+                        .alignment(ratatui::layout::Alignment::Right),
+                    )
                     .title_bottom(
                         Line::from(Span::styled(
                             bottom_hint,
@@ -790,6 +822,33 @@ impl App {
         );
 
         frame.render_widget(list, popup);
+    }
+
+    fn render_confirm_quit(&self, frame: &mut Frame, area: Rect) {
+        use ratatui::layout::Alignment;
+        use ratatui::widgets::Clear;
+
+        let popup_width = 30u16;
+        let popup_height = 3u16;
+        let x = area.x + area.width.saturating_sub(popup_width) / 2;
+        let y = area.y + area.height.saturating_sub(popup_height) / 2;
+        let popup = Rect::new(x, y, popup_width.min(area.width), popup_height.min(area.height));
+
+        frame.render_widget(Clear, popup);
+
+        let text = Paragraph::new(" Quit? y to confirm ")
+            .alignment(Alignment::Center)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Yellow))
+                    .title(Span::styled(
+                        " Quit ",
+                        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                    )),
+            );
+
+        frame.render_widget(text, popup);
     }
 
     fn fire_focus_notification(task_title: &str) {
